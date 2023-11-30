@@ -62,7 +62,9 @@ if not filtered_df.empty:
     # Extracting the bill number, title, and content from the selected option
     bill_number = option.split(":")[0][6:]
     bill_title = option.split(":")[1]
-    bill_content = filtered_df[filtered_df['BillNumber'] == bill_number]['DocumentText'].iloc[0]
+    # bill_content = filtered_df[filtered_df['BillNumber'] == bill_number]['DocumentText'].iloc[0]
+    idx = df[df['BillNumber'] == bill_number]['DocumentText'].index.tolist()[0]
+    bill_content = filtered_df['DocumentText'].iloc[idx]
     
 else:
     if search_number or search_title:
