@@ -25,48 +25,76 @@ st.title('Summarize Bills')
 sbar()
 
 
-template = """"You are a summarizer model that summarizes legal bills and legislation. Please include the bill's main purpose, relevant key points and any amendements. 
-The summaries must be easy to understand and accurate based on the provided bill. I want you to summarize the legal bill and legislation. 
-Use the title {title} to guide your summary. Summarize the bill that reads as follows:\n{context}\n\nSummary: An Act [bill title]. This bill [key information].
-"""
+# template = """"
+# Can you please explain what the following MA bill means to a regular citizen without specialized knowledge? 
+
+# Please provide a one paragraph summary in 4 sentences. Please be direct and concise for the busy reader.
+
+# Note that the bill refers to specific existing sections of the Mass General Laws, so take into account what you know about the pre-existing language and meaning of those sections.
+
+# Summarize the bill that reads as follows:\n{context}\n\n
+
+# If this information exists, use the Massachusetts General Laws:\n{laws}\n
+# """
 
 # model to test hallucination
 model = CrossEncoder('vectara/hallucination_evaluation_model')
 
 # load the dataset
-df = pd.read_csv("demoapp/all_bills.csv")
+df = pd.read_csv("demoapp/12billswithmgl.csv")
 
-# Creating search bar 
-search_number = st.text_input("Search by Bill Number")
-search_title = st.text_input("Search by Bill Title")
 
-# Initial empty DataFrame
-filtered_df = df
+def find_bills(bill_number, bill_title):
+    """input:
+    args: bill_number: (str), Use the number of the bill to find its title and content
+    """
+    bill = df[df['BillNumber'] == bill_number]['DocumentText']
 
-# Filtering based on inputs
-if search_number:
-    filtered_df = df[df['BillNumber'].str.contains(search_number, case=False, na=False)]
-if search_title:
-    filtered_df = df[df['Title'].str.contains(search_title, case=False, na=False)]
+    try:
+         # Locate the index of the bill
+        idx = bill.index.tolist()[0]
+        # Locate the content and bill title of bill based on idx
+        content = df['DocumentText'].iloc[idx]
+        #bill_title = df['Title'].iloc[idx]
+        bill_number = df['BillNumber'].iloc[idx]
+        # laws
+        # law = df['combined_MGL'].iloc[idx]
 
-if not filtered_df.empty:
-    # Creating selectbox options safely
-    selectbox_options = [f"Bill #{num}: {filtered_df[filtered_df['BillNumber'] == num]['Title'].iloc[0]}" 
-                         for num in filtered_df['BillNumber'] if not filtered_df[filtered_df['BillNumber'] == num].empty]
-
-    option = st.selectbox(
-        'Select a Bill',
-        selectbox_options
-    )
-
-    # Extracting the bill number, title, and content from the selected option
-    bill_number = option.split(":")[0][6:]
-    bill_title = option.split(":")[1]
-    bill_content = filtered_df[filtered_df['BillNumber'] == bill_number]['DocumentText'].iloc[0]
+        return content, bill_title, bill_number
     
-else:
-    if search_number or search_title:
-        st.write("No bills found matching the search criteria.")
+    except Exception as e:
+        content = "blank"
+        st.error("Cannot find such bill from the source")
+    
+
+bills_to_select = {
+    '#H3121': 'An Act relative to the open meeting law',
+    '#S2064': 'An Act extending the public records law to the Governor and the Legislature',
+    '#H711': 'An Act providing a local option for ranked choice voting in municipal elections',
+    '#S1979': 'An Act establishing a jail and prison construction moratorium',
+    '#H489': 'An Act providing affordable and accessible high-quality early education and care to promote child development and well-being and support the economy in the Commonwealth',
+    '#S2014': 'An Act relative to collective bargaining rights for legislative employees',
+    '#S301': 'An Act providing affordable and accessible high quality early education and care to promote child development and well-being and support the economy in the Commonwealth',
+    '#H3069': 'An Act relative to collective bargaining rights for legislative employees',
+    '#S433': 'An Act providing a local option for ranked choice voting in municipal elections',
+    '#H400': 'An Act relative to vehicle recalls',
+    '#H538': 'An Act to Improve access, opportunity, and capacity in Massachusetts vocational-technical education',
+    '#S257': 'An Act to end discriminatory outcomes in vocational school admissions'
+}
+
+# Displaying the selectbox
+selectbox_options = [f"{number}: {title}" for number, title in bills_to_select.items()]
+option = st.selectbox(
+    'Select a Bill',
+    selectbox_options
+)
+
+# Extracting the bill number from the selected option
+selected_num = option.split(":")[0][1:]
+selected_title = option.split(":")[1]
+
+# bill_content, bill_title, bill_number, masslaw = find_bills(selected_num, selected_title)
+bill_content, bill_title, bill_number = find_bills(selected_num, selected_title)
 
 
 def generate_categories(text):
@@ -81,15 +109,11 @@ def generate_categories(text):
          return st.error("Invalid [OpenAI API key](https://beta.openai.com/account/api-keys) or not found")
     
     # LLM
-    category_prompt = """According to this list of category {category}.
-
-        classify this bill {context} into a closest relevant category.
-
+    category_prompt = """According to this list of category {category}, classify this bill {context} into a closest relevant category.
         Do not output a category outside from the list
-    """
+        """
 
     prompt = PromptTemplate(template=category_prompt, input_variables=["context", "category"])
-
     
     llm = LLMChain(
             llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4'), prompt=prompt)
@@ -97,10 +121,10 @@ def generate_categories(text):
     response = llm.predict(context = text, category = category_for_bill) # grab from tagging.py
     return response
 
+
 def generate_tags(category, context):
     """Function to generate tags using Retrieval Augmented Generation
     """
-
     try:
         API_KEY = st.session_state["OPENAI_API_KEY"]
         os.environ['OPENAI_API_KEY'] = API_KEY
@@ -119,11 +143,10 @@ def generate_tags(category, context):
     Question: {question}
     Context: {context}
     Answer:
-    
     """
 
     prompt = PromptTemplate.from_template(template)
-    llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4')
+    llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4-1106-preview')
 
     rag_chain = (
         {"context": retriever, "question": RunnablePassthrough()}
@@ -138,23 +161,46 @@ def generate_tags(category, context):
     return response
 
 
-def generate_response(text, title):
+def generate_response(text):
     """Function to generate response"""
     try:
-        API_KEY = st.session_state['OPENAI_API_KEY']
+        API_KEY = st.session_state["OPENAI_API_KEY"]
+        os.environ['OPENAI_API_KEY'] = API_KEY
     except Exception as e:
-        return st.error("Invalid [OpenAI API key](https://beta.openai.com/account/api-keys) or not found")
+         return st.error("Invalid [OpenAI API key](https://beta.openai.com/account/api-keys) or not found")
     
-    prompt = PromptTemplate(input_variables=["context", "title"], template=template)
+    loader = TextLoader("demoapp/extracted_mgl.txt").load()
+    text_splitter = CharacterTextSplitter(chunk_size=4000, chunk_overlap=0)
+    documents = text_splitter.split_documents(loader)
+    vectorstore = Chroma.from_documents(documents, OpenAIEmbeddings())
+    retriever = vectorstore.as_retriever()
 
-    # Instantiate LLM model
-    with get_openai_callback() as cb:
-        llm = LLMChain(
-            llm = ChatOpenAI(openai_api_key=API_KEY,
-                     temperature=0.01, model="gpt-3.5-turbo-1106"), prompt=prompt)
+    # LLM
+    template = """You are a trustworthy assistant for question-answering tasks.
+    Use the following pieces of retrieved context to answer the question.
+    Question: {question}
+    Context: {context}
+    Answer:
+    """
+
+    prompt = PromptTemplate.from_template(template)
+    llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4-1106-preview')
+
+    rag_chain = (
+        {"context": retriever, "question": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+    query = f""" Can you please explain what the following MA bill means to a regular citizen without specialized knowledge? 
+        Please provide a one paragraph summary in 4 sentences. Please be direct and concise for the busy reader.
+        Summarize the bill that reads as follows:\n{text}\n
+        Note that the bill refers to specific existing sections of the Mass General Laws. Use the information from those sections in {retriever} to construct your summary. \n
+        """
         
-        response = llm.predict(context=text, title=title)
-        return response, cb.total_tokens, cb.prompt_tokens, cb.completion_tokens, cb.total_cost
+    response = rag_chain.invoke(query)
+    return response
+    
 
 # Function to update or append to CSV
 def update_csv(bill_num, title, summarized_bill, category, tag, csv_file_path):
@@ -177,19 +223,18 @@ def update_csv(bill_num, title, summarized_bill, category, tag, csv_file_path):
     df.to_csv(csv_file_path, index=False)
     return df
 
-
 csv_file_path = "demoapp/generated_bills.csv"
+
 
 answer_container = st.container()
 with answer_container:
     submit_button = st.button(label='Summarize')
-    # col1, col2, col3 = st.columns(3, gap='medium')
     col1, col2, col3 = st.columns([1.5, 1.5, 1])
 
     if submit_button:
         with st.spinner("Working hard..."):
             
-                response, response_tokens, prompt_tokens, completion_tokens, response_cost = generate_response(bill_content, bill_title)
+                response = generate_response(bill_content)
                 category_response = generate_categories(bill_content)
                 tag_response = generate_tags(category_response, bill_content)
                 
@@ -233,12 +278,10 @@ with answer_container:
                     ])
                     score_result = float(scores[0])
                     st.write(f"Factual Consistency Score: {round(score_result, 2)}")
-                    st.write("###")
                     
-                    st.subheader("Token Usage")
-                    st.write(f"Response Tokens: {response_tokens}")
-                    st.write(f"Prompt Response: {prompt_tokens}")
-                    st.write(f"Response Complete:{completion_tokens}")
-                    st.write(f"Response Cost: $ {response_cost}")
-                    
-                    
+                    # st.write("###")
+                    # st.subheader("Token Usage")
+                    # st.write(f"Response Tokens: {response_tokens + tag_response_tokens + cate_response_tokens}")
+                    # st.write(f"Prompt Response: {prompt_tokens + tag_prompt_tokens + cate_prompt_tokens}")
+                    # st.write(f"Response Complete:{completion_tokens +  tag_completion_tokens + cate_completion_tokens}")
+                    # st.write(f"Response Cost: $ {response_cost + tag_cost + cate_cost}")              
