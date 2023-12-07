@@ -200,17 +200,18 @@ def generate_response(text, category):
             | llm
             | StrOutputParser()
         )
-    query = f""" Can you please explain what the following MA bill means to a regular citizen without specialized knowledge? 
+    query = f""" Can you please explain what the following MA bill means to a regular resident without specialized knowledge? 
             Please provide a one paragraph summary in 4 sentences. Please be direct and concise for the busy reader.
             Note that the bill refers to specific existing sections of the Mass General Laws. Use the information from those sections in your context to construct your summary.
             Summarize the bill that reads as follows:\n{text}\n\n
             
             After generating summary, output Category: {category}.
-            Then, output top 3 tags in this specific {category} from the list of tags {tags_for_bill} that are relevant to this bill. \n"""
+            Then, output top 3 tags in this specific category from the list of tags {tags_for_bill} that are relevant to this bill. \n"""
             # Do not output the tags outside from the list. \n
             # """
-   
-    response = rag_chain.invoke(query)
+    with get_openai_callback() as cb:
+        response = rag_chain.invoke(query)
+        st.write(cb.total_tokens, cb.prompt_tokens, cb.completion_tokens, cb.total_cost)
         
     return response
     
