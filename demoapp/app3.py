@@ -109,11 +109,15 @@ def generate_categories(text):
          return st.error("Invalid [OpenAI API key](https://beta.openai.com/account/api-keys) or not found")
     
     # LLM
-    category_prompt = """According to this list of category {category}, classify this bill {context} into a closest relevant category.
+    category_prompt = """According to this list of category {category}.
+
+        classify this bill {context} into a closest relevant category.
+
         Do not output a category outside from the list
-        """
+    """
 
     prompt = PromptTemplate(template=category_prompt, input_variables=["context", "category"])
+
     
     llm = LLMChain(
             llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4'), prompt=prompt)
@@ -122,46 +126,48 @@ def generate_categories(text):
     return response
 
 
-def generate_tags(category, context):
-    """Function to generate tags using Retrieval Augmented Generation
-    """
-    try:
-        API_KEY = st.session_state["OPENAI_API_KEY"]
-        os.environ['OPENAI_API_KEY'] = API_KEY
-    except Exception as e:
-         return st.error("Invalid [OpenAI API key](https://beta.openai.com/account/api-keys) or not found")
+# def generate_tags(category, context):
+#     """Function to generate tags using Retrieval Augmented Generation
+#     """
+#     try:
+#         API_KEY = st.session_state["OPENAI_API_KEY"]
+#         os.environ['OPENAI_API_KEY'] = API_KEY
+#     except Exception as e:
+#          return st.error("Invalid [OpenAI API key](https://beta.openai.com/account/api-keys) or not found")
     
-    loader = TextLoader("demoapp/category.txt").load()
-    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-    documents = text_splitter.split_documents(loader)
-    vectorstore = Chroma.from_documents(documents, OpenAIEmbeddings())
-    retriever = vectorstore.as_retriever()
+#     loader = TextLoader("demoapp/category.txt").load()
+#     text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+#     documents = text_splitter.split_documents(loader)
+#     vectorstore = Chroma.from_documents(documents, OpenAIEmbeddings())
+#     retriever = vectorstore.as_retriever()
 
-    # LLM
-    template = """You are a trustworthy assistant for question-answering tasks.
-    Use the following pieces of retrieved context to answer the question.
-    Question: {question}
-    Context: {context}
-    Answer:
-    """
+#     # # Instantiate LLM model
+#     # with get_openai_callback() as cb:
 
-    prompt = PromptTemplate.from_template(template)
-    llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4-1106-preview')
+#     template = """You are a trustworthy assistant for question-answering tasks.
+#         Use the following pieces of retrieved context to answer the question.
+#         Question: {question}
+#         Context: {context}
+#         Answer:
+#         """
 
-    rag_chain = (
-        {"context": retriever, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    query = f"""Output top 3 tags from the category {category} that is relevant to the context {context}
-    """
+#     prompt = PromptTemplate.from_template(template)
+#     llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4', model_kwargs={'seed': 42})
+
+#     rag_chain = (
+#             {"context": retriever, "question": RunnablePassthrough()}
+#             | prompt
+#             | llm
+#             | StrOutputParser()
+#                 )
+#     query = f"""Output top 3 tags from the category {category} that is relevant to the context {context}"""
         
-    response = rag_chain.invoke(query)
-    return response
+#     response = rag_chain.invoke(query)
+        
+#     return response
 
 
-def generate_response(text):
+def generate_response(text, category):
     """Function to generate response"""
     try:
         API_KEY = st.session_state["OPENAI_API_KEY"]
@@ -169,36 +175,43 @@ def generate_response(text):
     except Exception as e:
          return st.error("Invalid [OpenAI API key](https://beta.openai.com/account/api-keys) or not found")
     
+    
     loader = TextLoader("demoapp/extracted_mgl.txt").load()
     text_splitter = CharacterTextSplitter(chunk_size=4000, chunk_overlap=0)
     documents = text_splitter.split_documents(loader)
+    
     vectorstore = Chroma.from_documents(documents, OpenAIEmbeddings())
     retriever = vectorstore.as_retriever()
 
-    # LLM
+        
     template = """You are a trustworthy assistant for question-answering tasks.
-    Use the following pieces of retrieved context to answer the question.
-    Question: {question}
-    Context: {context}
-    Answer:
-    """
+        Use the following pieces of retrieved context to answer the question.
+        Question: {question}
+        Context: {context}
+        Answer:
+        """
 
     prompt = PromptTemplate.from_template(template)
-    llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4-1106-preview')
-
-    rag_chain = (
-        {"context": retriever, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    query = f""" Can you please explain what the following MA bill means to a regular citizen without specialized knowledge? 
-        Please provide a one paragraph summary in 4 sentences. Please be direct and concise for the busy reader.
-        Summarize the bill that reads as follows:\n{text}\n
-        Note that the bill refers to specific existing sections of the Mass General Laws. Use the information from those sections in {retriever} to construct your summary. \n
-        """
+    llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4-1106-preview', model_kwargs={'seed': 42})  
         
+    rag_chain = (
+            {"context": retriever, "question": RunnablePassthrough()}
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
+    query = f""" Can you please explain what the following MA bill means to a regular citizen without specialized knowledge? 
+            Please provide a one paragraph summary in 4 sentences. Please be direct and concise for the busy reader.
+            Note that the bill refers to specific existing sections of the Mass General Laws. Use the information from those sections in your context to construct your summary.
+            Summarize the bill that reads as follows:\n{text}\n\n
+            
+            After generating summary, output Category: {category}.
+            Then, output top 3 tags in this specific {category} from the list of tags {tags_for_bill} that are relevant to this bill. \n"""
+            # Do not output the tags outside from the list. \n
+            # """
+   
     response = rag_chain.invoke(query)
+        
     return response
     
 
@@ -233,55 +246,54 @@ with answer_container:
 
     if submit_button:
         with st.spinner("Working hard..."):
-            
-                response = generate_response(bill_content)
-                category_response = generate_categories(bill_content)
-                tag_response = generate_tags(category_response, bill_content)
-                
-                with col1:
-                    st.subheader(f"Original Bill: #{bill_number}")
-                    st.write(bill_title)
-                    st.write(bill_content)
+            # response = generate_response(bill_content)
+            category_response = generate_categories(bill_content)
+            response = generate_response(bill_content, category_response)
+            #tag_response = generate_tags(category_response, bill_content)
+    
+            with col1:
+                st.subheader(f"Original Bill: #{bill_number}")
+                st.write(bill_title)
+                st.write(bill_content)
 
-                with col2:
-                    st.subheader("Generated Text")
-                    st.write(response)
-                    st.write("###")
-                    st.write("Category:", category_response)
-                    st.write(tag_response)
+            with col2:
+                st.subheader("Generated Text")
+                st.write(response)
+                st.write("###")
                     
-                    update_csv(bill_number, bill_title, response, category_response, tag_response, csv_file_path)
-                    st.download_button(
-                            label="Download Text",
-                            data=pd.read_csv("demoapp/generated_bills.csv").to_csv(index=False).encode('utf-8'),
-                            file_name='Bills_Summarization.csv',
-                            mime='text/csv',)
+                # update_csv(bill_number, bill_title, response, category_response, tag_response, csv_file_path)
+                # st.download_button(
+                #             label="Download Text",
+                #             data=pd.read_csv("demoapp/generated_bills.csv").to_csv(index=False).encode('utf-8'),
+                #             file_name='Bills_Summarization.csv',
+                #             mime='text/csv',)
                     
-                with col3:
-                    st.subheader("Evaluation Metrics")
-                    # rouge score addition
-                    scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
-                    rouge_scores = scorer.score(bill_content, response)
-                    st.write(f"ROUGE-1 Score: {rouge_scores['rouge1'].fmeasure:.2f}")
-                    st.write(f"ROUGE-2 Score: {rouge_scores['rouge2'].fmeasure:.2f}")
-                    st.write(f"ROUGE-L Score: {rouge_scores['rougeL'].fmeasure:.2f}")
+            with col3:
+                st.subheader("Evaluation Metrics")
+                # rouge score addition
+                scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
+                rouge_scores = scorer.score(bill_content, response)
+                st.write(f"ROUGE-1 Score: {rouge_scores['rouge1'].fmeasure:.2f}")
+                st.write(f"ROUGE-2 Score: {rouge_scores['rouge2'].fmeasure:.2f}")
+                st.write(f"ROUGE-L Score: {rouge_scores['rougeL'].fmeasure:.2f}")
                     
-                    # calc cosine similarity
-                    vectorizer = TfidfVectorizer()
-                    tfidf_matrix = vectorizer.fit_transform([bill_content, response])
-                    cosine_sim = cosine_similarity(tfidf_matrix[0], tfidf_matrix[1])
-                    st.write(f"Cosine Similarity Score: {cosine_sim[0][0]:.2f}")
+                # calc cosine similarity
+                vectorizer = TfidfVectorizer()
+                tfidf_matrix = vectorizer.fit_transform([bill_content, response])
+                cosine_sim = cosine_similarity(tfidf_matrix[0], tfidf_matrix[1])
+                st.write(f"Cosine Similarity Score: {cosine_sim[0][0]:.2f}")
 
-                    # test hallucination
-                    scores = model.predict([
+                # test hallucination
+                scores = model.predict([
                         [bill_content, response]
                     ])
-                    score_result = float(scores[0])
-                    st.write(f"Factual Consistency Score: {round(score_result, 2)}")
-                    
+                score_result = float(scores[0])
+                st.write(f"Factual Consistency Score: {round(score_result, 2)}")
+                             
                     # st.write("###")
                     # st.subheader("Token Usage")
-                    # st.write(f"Response Tokens: {response_tokens + tag_response_tokens + cate_response_tokens}")
-                    # st.write(f"Prompt Response: {prompt_tokens + tag_prompt_tokens + cate_prompt_tokens}")
-                    # st.write(f"Response Complete:{completion_tokens +  tag_completion_tokens + cate_completion_tokens}")
+                    # st.write(f"Response Tokens: {response_tokens + tag_tokens + cate_tokens}")
+                    # st.write(f"Prompt Response: {prompt_tokens + tag_tokens + cate_prompt}")
+                    # st.write(f"Response Complete:{completion_tokens +  tag_completion + cate_completion}")
                     # st.write(f"Response Cost: $ {response_cost + tag_cost + cate_cost}")              
+                    # st.write(f"Cost: response $ {response_cost},  tag{tag_cost}, category {cate_cost}")  

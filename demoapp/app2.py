@@ -151,7 +151,7 @@ def generate_tags(category, context):
     """
 
     prompt = PromptTemplate.from_template(template)
-    llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4')
+    llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-3.5-turbo-1106', model_kwargs={"seed": 42})
 
     rag_chain = (
         {"context": retriever, "question": RunnablePassthrough()}
