@@ -10,7 +10,7 @@ Using Anaconda or create an environment to run streamlit
 
 In the file "app.py" in "demoapp" folder:
 * ```pip install streamlit```
-* Install all imported libraries: ```pip install pandas langchain openai chromadb tiktoken``` or you can refer to the requirement.txt
+* Install all imported libraries: ```pip install pandas langchain openai chromadb tiktoken scikit-learn``` or you can refer to the requirement.txt
 * ```streamlit run demoapp/app.py```
 
 # Additional Pointers (Source:Research Paper)
