@@ -9,8 +9,7 @@ Using Anaconda or create an environment to run streamlit
     ```conda activate maple```
 
 In the file "app.py" in "demoapp" folder:
-* ```pip install streamlit```
-* Install all imported libraries: ```pip install pandas langchain openai chromadb tiktoken scikit-learn rouge_score sentence_transformers``` or you can refer to the requirement.txt
+* ```pip install -r requirement.txt```
 * ```streamlit run demoapp/app.py```
 
 # Additional Pointers (Source:Research Paper)
