@@ -1,20 +1,20 @@
+import os
 import streamlit as st
 import pandas as pd
-import os
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
-from langchain.vectorstores import Chroma
 from langchain.chat_models import ChatOpenAI
-from langchain.schema.runnable import RunnablePassthrough
 from langchain.schema.output_parser import StrOutputParser
-from langchain.callbacks import get_openai_callback
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from rouge_score import rouge_scorer
 from sentence_transformers import CrossEncoder
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.document_loaders import TextLoader
+
+# Removed RAG-related imports
+# from langchain.vectorstores import Chroma
+# from langchain.embeddings.openai import OpenAIEmbeddings
+# from langchain.text_splitter import CharacterTextSplitter
+# from langchain.document_loaders import TextLoader
 
 from sidebar import *
 from tagging import *
@@ -157,50 +157,37 @@ def generate_categories(text):
 
 
 def generate_response(text, category):
-    """Function to generate response"""
-
+    """Function to generate response directly using LLM without RAG"""
     API_KEY = st.session_state["OPENAI_API_KEY"]
     os.environ['OPENAI_API_KEY'] = API_KEY
 
-    loader = TextLoader("demoapp/extracted_mgl.txt").load()
-    text_splitter = CharacterTextSplitter(chunk_size=4000, chunk_overlap=0)
-    documents = text_splitter.split_documents(loader)
-    
-    vectorstore = Chroma.from_documents(documents, OpenAIEmbeddings())
-    retriever = vectorstore.as_retriever()
-
-        
+    # Define the prompt template with placeholders for the text and category
     template = """You are a trustworthy assistant for question-answering tasks.
-        Use the following pieces of retrieved context to answer the question.
-        Question: {question}
-        Context: {context}
-        Answer:
-        """
+        Can you please explain what the following MA bill means to a regular resident without specialized knowledge? 
+        Please provide a one paragraph summary in 4 sentences. Be direct and concise:
+        {text}
+        
+        After generating the summary, output the Category: {category}.
+        Then, output the top 3 tags in this specific category from the list of tags that are relevant to this bill.
+    """
 
-    prompt = PromptTemplate.from_template(template)
-    llm = ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4-1106-preview', model_kwargs={'seed': 42})  
-        
-    rag_chain = (
-            {"context": retriever, "question": RunnablePassthrough()}
-            | prompt
-            | llm
-            | StrOutputParser()
-        )
-    query = f""" Can you please explain what the following MA bill means to a regular resident without specialized knowledge? 
-            Please provide a one paragraph summary in 4 sentences. Please be direct and concise for the busy reader.
-            Note that the bill refers to specific existing sections of the Mass General Laws. Use the information from those sections in your context to construct your summary.
-            Summarize the bill that reads as follows:\n{text}\n\n
-            
-            After generating summary, output Category: {category}.
-            Then, output top 3 tags in this specific category from the list of tags {tags_for_bill} that are relevant to this bill. \n"""
-            # Do not output the tags outside from the list. \n
-            # """
-    with get_openai_callback() as cb:
-        response = rag_chain.invoke(query)
-        st.write(cb.total_tokens, cb.prompt_tokens, cb.completion_tokens, cb.total_cost)
-        
+    # Instantiate the PromptTemplate with the correct input variables
+    prompt = PromptTemplate(template=template, input_variables=["text", "category"])
+
+     # Instantiate the LLMChain with the ChatOpenAI model
+    llm_chain = LLMChain(
+        llm=ChatOpenAI(openai_api_key=API_KEY, temperature=0, model='gpt-4'),
+        prompt=prompt
+    )
+
+    # Invoke the chain with the text and category
+    # Ensure that we're passing the correct dictionary structure to the predict function
+    # The keys must exactly match the input_variables expected by the PromptTemplate
+    response = llm_chain.predict(text=text, category=category)
+
     return response
-    
+
+
 
 # Function to update or append to CSV
 def update_csv(bill_num, title, summarized_bill, category, tag, csv_file_path):
